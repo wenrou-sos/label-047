@@ -109,7 +109,7 @@ const quickActions = [
             </div>
             <div class="text-right ml-4">
               <p class="text-sm font-mono" :class="daysOverdue(payment.dueDate) > 30 ? 'text-rose-400' : 'text-amber-400'">
-                ¥{{ (payment.amount - payment.paidAmount).toLocaleString() }}
+                ¥{{ Math.max(0, payment.amount - payment.paidAmount).toLocaleString() }}
               </p>
               <p class="text-xs text-slate-500 mt-0.5">逾期 {{ daysOverdue(payment.dueDate) }} 天</p>
             </div>

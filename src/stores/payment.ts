@@ -37,7 +37,10 @@ export const usePaymentStore = defineStore('payment', () => {
   })
 
   const overduePayments = computed(() =>
-    payments.value.filter(p => p.status === 'unpaid' || p.status === 'partial')
+    payments.value.filter(p =>
+      (p.status === 'unpaid' || p.status === 'partial') &&
+      (p.amount - p.paidAmount) > 0
+    )
   )
 
   const totalCollected = computed(() =>
@@ -45,7 +48,7 @@ export const usePaymentStore = defineStore('payment', () => {
   )
 
   const totalOutstanding = computed(() =>
-    payments.value.reduce((sum, p) => sum + (p.amount - p.paidAmount), 0)
+    payments.value.reduce((sum, p) => sum + Math.max(0, p.amount - p.paidAmount), 0)
   )
 
   const collectionRate = computed(() => {
@@ -65,11 +68,20 @@ export const usePaymentStore = defineStore('payment', () => {
   function updatePaymentStatus(id: string, status: Payment['status'], paidAmount?: number) {
     const payment = payments.value.find(p => p.id === id)
     if (payment) {
-      payment.status = status
-      if (paidAmount !== undefined) payment.paidAmount = paidAmount
-      if (status === 'paid') {
+      if (paidAmount !== undefined) {
+        const remaining = payment.amount - payment.paidAmount
+        const validAmount = Math.max(0, Math.min(paidAmount, remaining))
+        payment.paidAmount += validAmount
+      }
+      if (status === 'paid' || payment.paidAmount >= payment.amount) {
+        payment.status = 'paid'
         payment.paidAmount = payment.amount
         payment.paidDate = new Date().toISOString().split('T')[0]
+      } else {
+        payment.status = status
+        if (payment.paidAmount > 0) {
+          payment.status = 'partial'
+        }
       }
     }
   }

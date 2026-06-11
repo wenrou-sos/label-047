@@ -1,8 +1,9 @@
-import { defineStore } from 'pinia'
+import { defineStore, storeToRefs } from 'pinia'
 import { ref, computed } from 'vue'
 import type { RepairOrder, RepairFilter, RepairStatus } from '@/types'
 import { repairs as mockRepairs } from '@/mock/repairs'
 import { useLocalStorage } from '@/composables/useLocalStorage'
+import { useWorkerStore } from './worker'
 
 export const useRepairStore = defineStore('repair', () => {
   const repairs = useLocalStorage<RepairOrder[]>('property-repairs', mockRepairs)
@@ -66,6 +67,14 @@ export const useRepairStore = defineStore('repair', () => {
         timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
         description: `已分配维修人员`,
       })
+
+      const workerStore = useWorkerStore()
+      const worker = workerStore.getWorkerById(workerId)
+      if (worker) {
+        worker.status = 'busy'
+        worker.currentOrderId = orderId
+        worker.eta = '约15分钟'
+      }
     }
   }
 
@@ -78,6 +87,16 @@ export const useRepairStore = defineStore('repair', () => {
         timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
         description,
       })
+
+      if ((status === 'completed' || status === 'closed') && order.assignedWorkerId) {
+        const workerStore = useWorkerStore()
+        const worker = workerStore.getWorkerById(order.assignedWorkerId)
+        if (worker && worker.currentOrderId === orderId) {
+          worker.status = 'available'
+          worker.currentOrderId = null
+          worker.eta = null
+        }
+      }
     }
   }
 

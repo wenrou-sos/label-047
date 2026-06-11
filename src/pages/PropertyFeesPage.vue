@@ -16,6 +16,10 @@ const handleMarkPaid = (id: string) => {
   store.updatePaymentStatus(id, 'paid')
 }
 
+const getRemainingAmount = (payment: any) => {
+  return Math.max(0, payment.amount - payment.paidAmount)
+}
+
 const handlePartialSubmit = (id: string) => {
   const amount = parseFloat(partialInput.value[id] || '')
   if (isNaN(amount) || amount <= 0) return
@@ -154,15 +158,18 @@ const showPartialInput = (id: string) => {
                   部分缴费
                 </button>
                 <div v-if="activePartial === payment.id" class="flex items-center gap-1">
-                  <input
-                    v-model="partialInput[payment.id]"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder="金额"
-                    class="w-20 bg-slate-900 border border-slate-600 rounded-md px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
-                    @keyup.enter="handlePartialSubmit(payment.id)"
-                  />
+                  <div class="relative">
+                    <input
+                      v-model="partialInput[payment.id]"
+                      type="number"
+                      min="0"
+                      :max="getRemainingAmount(payment)"
+                      step="0.01"
+                      :placeholder="`最多 ¥${getRemainingAmount(payment)}`"
+                      class="w-28 bg-slate-900 border border-slate-600 rounded-md px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                      @keyup.enter="handlePartialSubmit(payment.id)"
+                    />
+                  </div>
                   <button
                     class="px-2 py-1 rounded-md text-xs font-medium bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors"
                     @click="handlePartialSubmit(payment.id)"
