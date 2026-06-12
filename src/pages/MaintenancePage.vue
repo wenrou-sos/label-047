@@ -1,437 +1,583 @@
-<script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useRepairStore } from '@/stores/repair'
-import { useWorkerStore } from '@/stores/worker'
-import { usePaymentStore } from '@/stores/payment'
-import StatusBadge from '@/components/common/StatusBadge.vue'
-import {
-  Search,
-  RotateCcw,
-  Wrench,
-  Clock,
-  MapPin,
-  User,
-  Phone,
-  CheckCircle,
-  AlertCircle,
-  ChevronRight,
-} from 'lucide-vue-next'
-import type { RepairStatus, RepairPriority } from '@/types'
-
-const repairStore = useRepairStore()
-const workerStore = useWorkerStore()
-const paymentStore = usePaymentStore()
-
-const statusOptions: { value: RepairStatus | ''; label: string }[] = [
-  { value: '', label: '全部状态' },
-  { value: 'pending', label: '待受理' },
-  { value: 'assigned', label: '已分配' },
-  { value: 'in_progress', label: '处理中' },
-  { value: 'completed', label: '已完成' },
-  { value: 'closed', label: '已关闭' },
-]
-
-const priorityOptions: { value: RepairPriority | ''; label: string }[] = [
-  { value: '', label: '全部优先级' },
-  { value: 'low', label: '低' },
-  { value: 'medium', label: '中' },
-  { value: 'high', label: '高' },
-  { value: 'urgent', label: '紧急' },
-]
-
-const assignWorkerId = ref<Record<string, string>>({})
-
-const handleAssign = (orderId: string) => {
-  const workerId = assignWorkerId.value[orderId]
-  if (!workerId) return
-  repairStore.assignWorker(orderId, workerId)
-  assignWorkerId.value[orderId] = ''
-}
-
-const handleStartProgress = (orderId: string) => {
-  repairStore.updateStatus(orderId, 'in_progress', '维修人员已到达现场开始处理')
-}
-
-const handleComplete = (orderId: string) => {
-  repairStore.updateStatus(orderId, 'completed', '维修完成')
-}
-
-const stageLabels: Record<string, string> = {
-  pending: '提交',
-  assigned: '分配',
-  in_progress: '处理',
-  completed: '完成',
-  closed: '关闭',
-}
-
-const statsValueMap = computed(() => ({
-  pendingCount: repairStore.pendingCount,
-  inProgressCount: repairStore.inProgressCount,
-  completedCount: repairStore.completedCount,
-  timelyRate: repairStore.timelyRate,
-}))
-
-const statsCards = [
-  { title: '待受理', key: 'pendingCount', icon: AlertCircle, gradient: 'from-amber-500/10 to-amber-600/5', iconColor: 'text-amber-400', valueColor: 'text-amber-400' },
-  { title: '处理中', key: 'inProgressCount', icon: Clock, gradient: 'from-cyan-500/10 to-cyan-600/5', iconColor: 'text-cyan-400', valueColor: 'text-cyan-400' },
-  { title: '已完成', key: 'completedCount', icon: CheckCircle, gradient: 'from-emerald-500/10 to-emerald-600/5', iconColor: 'text-emerald-400', valueColor: 'text-emerald-400' },
-  { title: '及时率', key: 'timelyRate', icon: Wrench, gradient: 'from-cyan-500/10 to-cyan-600/5', iconColor: 'text-cyan-400', valueColor: 'text-cyan-400', suffix: '%' },
-]
-</script>
-
 <template>
-  <div class="space-y-6">
-    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-      <div
-        v-for="(card, i) in statsCards"
-        :key="card.key"
-        class="animate-slide-in"
-        :style="{ animationDelay: `${i * 80}ms` }"
-      >
-        <div class="relative overflow-hidden rounded-xl border border-slate-700/50 bg-slate-900/50 p-5 transition-all duration-300 hover:border-slate-600/50 hover:shadow-lg group">
-          <div :class="['absolute inset-0 bg-gradient-to-br opacity-0 group-hover:opacity-100 transition-opacity duration-500', card.gradient]" />
-          <div class="relative z-10">
-            <div class="flex items-start justify-between">
-              <div class="space-y-2">
-                <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">{{ card.title }}</p>
-                <p :class="['text-2xl font-bold font-mono', card.valueColor]">
-                  {{ (statsValueMap as Record<string, number>)[card.key] }}{{ card.suffix ?? '' }}
-                </p>
-              </div>
-              <div :class="['p-2.5 rounded-lg bg-slate-800/80', card.iconColor]">
-                <component :is="card.icon" class="w-5 h-5" />
-              </div>
-            </div>
-          </div>
-        </div>
+  <div class="space-y-5 animate-fadeIn">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div>
+        <h1 class="text-2xl font-bold text-white tracking-tight">维修工单看板</h1>
+        <p class="text-sm text-slate-400 mt-1">拖拽卡片调整状态，快速管理维修工单</p>
       </div>
-    </div>
-
-    <div class="bg-slate-800/50 rounded-xl border border-slate-700/50 p-4 animate-slide-in" style="animation-delay: 350ms">
-      <div class="flex flex-wrap items-center gap-3">
-        <select
-          :value="repairStore.filter.status"
-          class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-500 transition-colors"
-          @change="repairStore.setFilter({ status: ($event.target as HTMLSelectElement).value as RepairStatus | '' })"
-        >
-          <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-        </select>
-
-        <select
-          :value="repairStore.filter.priority"
-          class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-500 transition-colors"
-          @change="repairStore.setFilter({ priority: ($event.target as HTMLSelectElement).value as RepairPriority | '' })"
-        >
-          <option v-for="opt in priorityOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-        </select>
-
-        <div class="relative flex-1 min-w-[200px]">
-          <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="relative">
+          <Search class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <input
-            :value="repairStore.filter.keyword"
+            v-model="store.filter.keyword"
             type="text"
-            placeholder="搜索报修标题或描述..."
-            class="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-3 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
-            @input="repairStore.setFilter({ keyword: ($event.target as HTMLInputElement).value })"
+            placeholder="搜索工单..."
+            class="pl-9 pr-4 py-2 w-44 bg-slate-900 border border-slate-700 rounded-md text-sm text-slate-200 focus:outline-none focus:border-sky-500 placeholder:text-slate-500"
           />
         </div>
-
-        <button
-          class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors"
-          @click="repairStore.resetFilter()"
+        <select
+          v-model="store.filter.priority"
+          class="px-3 py-2 bg-slate-900 border border-slate-700 rounded-md text-sm text-slate-200 focus:outline-none focus:border-sky-500"
         >
-          <RotateCcw class="w-4 h-4" />
+          <option value="">全部优先级</option>
+          <option value="low">低</option>
+          <option value="medium">中</option>
+          <option value="high">高</option>
+          <option value="urgent">紧急</option>
+        </select>
+        <select
+          v-model="store.filter.workerId"
+          class="px-3 py-2 bg-slate-900 border border-slate-700 rounded-md text-sm text-slate-200 focus:outline-none focus:border-sky-500"
+        >
+          <option value="">全部维修人员</option>
+          <option v-for="w in workerStore.workers" :key="w.id" :value="w.id">
+            {{ w.name }}（{{ w.specialty }}）
+          </option>
+        </select>
+        <button
+          class="px-3 py-2 text-sm bg-slate-800 text-slate-300 rounded-md hover:bg-slate-700 transition-colors flex items-center gap-1.5"
+          @click="store.resetFilter()"
+        >
+          <FilterX class="w-4 h-4" />
           重置
         </button>
       </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <div class="lg:col-span-2 space-y-4">
+    <div class="flex gap-4 overflow-x-auto pb-4 -mx-1 px-1">
+      <div
+        v-for="(col, idx) in columns"
+        :key="col.key"
+        class="flex-shrink-0 w-80 md:w-[calc((100%-2rem)/3)] min-w-[280px]"
+        @dragover.prevent="onDragOver($event, idx)"
+        @dragleave="onDragLeave($event, idx)"
+        @drop="onDrop($event, col.key)"
+        :class="[
+          'rounded-xl border-2 transition-all duration-200 h-[calc(100vh-260px)] min-h-[500px] flex flex-col',
+          dragOverColumn === idx
+            ? col.activeBorder + ' ' + col.activeBg + ' scale-[1.01]'
+            : col.border + ' bg-slate-900/40'
+        ]"
+      >
         <div
-          v-for="(repair, idx) in repairStore.filteredRepairs"
-          :key="repair.id"
-          class="animate-slide-in rounded-xl border border-slate-700/50 bg-slate-900/50 p-5 hover:border-slate-600/50 hover:shadow-lg hover:shadow-cyan-500/5 transition-all duration-300"
-          :style="{ animationDelay: `${400 + idx * 60}ms` }"
+          class="flex items-center justify-between px-4 py-3 rounded-t-lg border-b"
+          :class="col.headerBorder"
         >
-          <div class="flex items-start justify-between gap-3 mb-3">
-            <div class="flex items-center gap-2 min-w-0">
-              <h3 class="text-sm font-semibold text-white truncate">{{ repair.title }}</h3>
-              <StatusBadge type="repair-priority" :value="repair.priority" />
-            </div>
-            <StatusBadge type="repair-status" :value="repair.status" />
-          </div>
-
-          <p class="text-xs text-slate-400 mb-4 line-clamp-2">{{ repair.description }}</p>
-
-          <div class="flex flex-wrap gap-x-5 gap-y-2 mb-4 text-xs">
-            <div class="flex items-center gap-1.5 text-slate-400">
-              <User class="w-3.5 h-3.5" />
-              <span>{{ paymentStore.getResidentById(repair.residentId)?.name ?? '未知住户' }}</span>
-            </div>
-            <div v-if="repair.assignedWorkerId" class="flex items-center gap-1.5 text-slate-400">
-              <Phone class="w-3.5 h-3.5" />
-              <span>{{ workerStore.getWorkerById(repair.assignedWorkerId)?.name ?? '未知人员' }}</span>
-            </div>
-            <div class="flex items-center gap-1.5 text-slate-400">
-              <Clock class="w-3.5 h-3.5" />
-              <span>{{ repair.createdAt }}</span>
-            </div>
-          </div>
-
-          <div class="flex items-start gap-3 mb-4 pl-1">
-            <div class="flex flex-col items-center">
-              <template v-for="(step, si) in repair.progress" :key="si">
-                <div
-                  :class="[
-                    'w-2.5 h-2.5 rounded-full border-2',
-                    si === repair.progress.length - 1
-                      ? 'bg-cyan-400 border-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.5)]'
-                      : 'bg-slate-700 border-slate-600'
-                  ]"
-                />
-                <div
-                  v-if="si < repair.progress.length - 1"
-                  class="w-0.5 h-5 bg-slate-700"
-                />
-              </template>
-            </div>
-            <div class="flex flex-col gap-0">
-              <template v-for="(step, si) in repair.progress" :key="si">
-                <div :class="['flex items-center gap-2', si < repair.progress.length - 1 ? 'h-5 mb-5' : 'h-5']">
-                  <span :class="['text-xs', si === repair.progress.length - 1 ? 'text-cyan-400 font-medium' : 'text-slate-500']">
-                    {{ stageLabels[step.stage] || step.stage }}
-                  </span>
-                  <span class="text-[10px] text-slate-600">{{ step.timestamp.slice(5, 16) }}</span>
-                </div>
-              </template>
-            </div>
-          </div>
-
-          <div class="flex items-center gap-2 pt-3 border-t border-slate-700/50">
-            <template v-if="repair.status === 'pending'">
-              <select
-                v-model="assignWorkerId[repair.id]"
-                class="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 transition-colors"
-              >
-                <option value="">选择维修人员</option>
-                <option v-for="w in workerStore.getAvailableWorkers()" :key="w.id" :value="w.id">
-                  {{ w.name }} - {{ w.specialty }}
-                </option>
-              </select>
-              <button
-                :disabled="!assignWorkerId[repair.id]"
-                :class="[
-                  'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                  assignWorkerId[repair.id]
-                    ? 'bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30'
-                    : 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                ]"
-                @click="handleAssign(repair.id)"
-              >
-                分配人员
-              </button>
-            </template>
-
-            <template v-if="repair.status === 'assigned'">
-              <button
-                class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors"
-                @click="handleStartProgress(repair.id)"
-              >
-                <ChevronRight class="w-3.5 h-3.5" />
-                开始处理
-              </button>
-            </template>
-
-            <template v-if="repair.status === 'in_progress'">
-              <button
-                class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors"
-                @click="handleComplete(repair.id)"
-              >
-                <CheckCircle class="w-3.5 h-3.5" />
-                完成维修
-              </button>
-            </template>
-
-            <template v-if="repair.status === 'completed' || repair.status === 'closed'">
-              <span class="text-xs text-slate-600 flex items-center gap-1">
-                <CheckCircle class="w-3.5 h-3.5" />
-                已结单
-              </span>
-            </template>
+          <div class="flex items-center gap-2">
+            <component :is="col.icon" class="w-4 h-4" :class="col.iconColor" />
+            <h3 class="text-sm font-semibold" :class="col.titleColor">{{ col.title }}</h3>
+            <span
+              class="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full text-xs font-bold"
+              :class="col.badgeClass"
+            >
+              {{ getColumnCount(col.key) }}
+            </span>
           </div>
         </div>
 
-        <div
-          v-if="repairStore.filteredRepairs.length === 0"
-          class="text-center py-16 text-slate-500 text-sm animate-slide-in"
-          style="animation-delay: 400ms"
-        >
-          暂无匹配的报修工单
+        <div class="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin">
+          <TransitionGroup name="list">
+            <div
+              v-for="order in getColumnData(col.key)"
+              :key="order.id"
+              draggable="true"
+              @dragstart="onDragStart($event, order.id)"
+              @dragend="onDragEnd"
+              :class="[
+                'group rounded-lg border p-3 cursor-grab active:cursor-grabbing transition-all duration-200 hover:shadow-lg',
+                draggingId === order.id ? 'opacity-50 scale-95 rotate-1' : 'opacity-100',
+                col.cardBorder,
+                col.cardBg,
+              ]"
+            >
+              <div class="flex items-start justify-between gap-2 mb-2">
+                <div class="flex items-center gap-1.5 min-w-0">
+                  <StatusBadge :value="order.priority" type="repair-priority" />
+                  <span class="text-[11px] font-mono text-slate-500 truncate">{{ order.id }}</span>
+                </div>
+                <button
+                  v-if="col.key === 'pending'"
+                  class="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-slate-700 rounded"
+                  @click="openAssign(order)"
+                  title="分配维修人员"
+                >
+                  <UserPlus class="w-3.5 h-3.5 text-slate-400 hover:text-sky-400" />
+                </button>
+                <button
+                  class="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-slate-700 rounded"
+                  @click="selectedOrder = order"
+                  title="查看详情"
+                >
+                  <Eye class="w-3.5 h-3.5 text-slate-400 hover:text-sky-400" />
+                </button>
+              </div>
+
+              <h4 class="text-sm font-semibold text-white mb-1 leading-snug">{{ order.title }}</h4>
+              <p class="text-xs text-slate-400 line-clamp-2 mb-3 leading-relaxed">{{ order.description }}</p>
+
+              <div class="flex items-center justify-between pt-2 border-t border-slate-700/50">
+                <div class="flex items-center gap-1.5">
+                  <div class="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
+                    :class="getWorkerBg(order.assignedWorkerId)"
+                  >
+                    {{ getWorkerInitial(order.assignedWorkerId) }}
+                  </div>
+                  <span class="text-[11px] text-slate-400">
+                    {{ getWorkerName(order.assignedWorkerId) || '待分配' }}
+                  </span>
+                </div>
+                <div class="flex items-center gap-1 text-[11px] text-slate-500">
+                  <Clock class="w-3 h-3" />
+                  {{ formatDate(order.createdAt) }}
+                </div>
+              </div>
+            </div>
+          </TransitionGroup>
+
+          <div
+            v-if="getColumnData(col.key).length === 0"
+            class="h-32 flex flex-col items-center justify-center text-slate-600 border-2 border-dashed border-slate-800 rounded-lg"
+          >
+            <Inbox class="w-8 h-8 mb-2 opacity-50" />
+            <span class="text-xs">暂无工单</span>
+          </div>
+        </div>
+
+        <div class="px-3 py-2 border-t border-slate-800/50 rounded-b-lg bg-slate-900/50">
+          <div class="flex items-center justify-between text-[11px] text-slate-500">
+            <span>拖拽卡片到其他列</span>
+            <span class="flex items-center gap-1">
+              <GripVertical class="w-3 h-3" />
+              共{{ getColumnCount(col.key) }}项
+            </span>
+          </div>
         </div>
       </div>
+    </div>
 
-      <div class="space-y-4">
-        <div class="animate-slide-in rounded-xl border border-slate-700/50 bg-slate-900/50 overflow-hidden" style="animation-delay: 500ms">
-          <div class="px-5 py-4 border-b border-slate-700/50">
-            <h3 class="text-sm font-medium text-slate-300">维修人员追踪</h3>
+    <Transition name="modal">
+      <div
+        v-if="selectedOrder"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+        @click.self="selectedOrder = null"
+      >
+        <div class="w-full max-w-lg bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl overflow-hidden">
+          <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="text-lg font-bold text-white">{{ selectedOrder.title }}</h3>
+                <StatusBadge :value="selectedOrder.priority" type="repair-priority" />
+              </div>
+              <p class="text-xs text-slate-500 font-mono mt-0.5">{{ selectedOrder.id }}</p>
+            </div>
+            <button
+              class="p-2 hover:bg-slate-800 rounded-lg transition-colors"
+              @click="selectedOrder = null"
+            >
+              <X class="w-4 h-4 text-slate-400" />
+            </button>
           </div>
 
-          <div class="relative h-56 bg-slate-950 m-4 rounded-lg overflow-hidden border border-slate-800/50">
-            <div class="absolute inset-0 opacity-30">
-              <div class="absolute top-0 left-0 w-full h-full" style="background: radial-gradient(circle at 30% 40%, rgba(34,211,238,0.2) 0%, transparent 50%), radial-gradient(circle at 70% 60%, rgba(52,211,153,0.15) 0%, transparent 50%), radial-gradient(circle at 50% 80%, rgba(251,191,36,0.1) 0%, transparent 40%)" />
-            </div>
-            <div class="absolute inset-0 opacity-15">
-              <svg class="w-full h-full" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
-                    <path d="M 24 0 L 0 0 0 24" fill="none" stroke="currentColor" stroke-width="0.5" class="text-slate-600" />
-                  </pattern>
-                </defs>
-                <rect width="100%" height="100%" fill="url(#grid)" />
-              </svg>
+          <div class="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
+            <div>
+              <label class="text-xs font-medium text-slate-500 uppercase tracking-wider">问题描述</label>
+              <p class="text-sm text-slate-300 mt-1.5 leading-relaxed bg-slate-800/40 rounded-lg p-3">{{ selectedOrder.description }}</p>
             </div>
 
-            <div class="absolute top-3 left-3 z-20 flex items-center gap-4 text-[10px]">
-              <div class="flex items-center gap-1.5">
-                <div class="w-2 h-2 rounded-full bg-emerald-400" />
-                <span class="text-slate-400">空闲</span>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs font-medium text-slate-500 uppercase tracking-wider">分配人员</label>
+                <div class="flex items-center gap-2 mt-1.5">
+                  <div class="w-7 h-7 rounded-full bg-sky-600 flex items-center justify-center text-xs font-bold text-white">
+                    {{ getWorkerInitial(selectedOrder.assignedWorkerId) }}
+                  </div>
+                  <div>
+                    <p class="text-sm font-medium text-white">{{ getWorkerName(selectedOrder.assignedWorkerId) || '待分配' }}</p>
+                    <p class="text-xs text-slate-500">{{ selectedOrder.assignedWorkerId ? getWorkerStore(selectedOrder.assignedWorkerId)?.specialty : '' }}</p>
+                  </div>
+                </div>
               </div>
-              <div class="flex items-center gap-1.5">
-                <div class="w-2 h-2 rounded-full bg-amber-400" />
-                <span class="text-slate-400">忙碌</span>
-              </div>
-              <div class="flex items-center gap-1.5">
-                <div class="w-2 h-2 rounded-full bg-slate-600" />
-                <span class="text-slate-400">下班</span>
+              <div>
+                <label class="text-xs font-medium text-slate-500 uppercase tracking-wider">报修住户</label>
+                <div class="mt-1.5">
+                  <p class="text-sm font-medium text-white">{{ getResident(selectedOrder.residentId)?.name || '-' }}</p>
+                  <p class="text-xs text-slate-500">{{ formatAddress(selectedOrder.residentId) }}</p>
+                </div>
               </div>
             </div>
 
-            <div
-              v-for="worker in workerStore.workers"
-              :key="worker.id"
-              class="absolute group worker-marker"
-              :style="{
-                left: `${((worker.longitude - 116.404) / 0.007) * 100}%`,
-                top: `${((worker.latitude - 39.912) / 0.006) * 100}%`,
-              }"
-            >
-              <div
-                :class="[
-                  'relative w-4 h-4 rounded-full cursor-pointer transition-all duration-700 ease-out group-hover:scale-[2] -translate-x-1/2 -translate-y-1/2',
-                  worker.status === 'available' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]' : worker.status === 'busy' ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.6)]' : 'bg-slate-600'
-                ]"
-              >
+            <div>
+              <label class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2 block">处理进度</label>
+              <div class="space-y-3">
                 <div
-                  v-if="worker.status === 'busy'"
-                  :class="['absolute inset-0 w-4 h-4 rounded-full bg-amber-400 animate-ping-slow -translate-x-0 -translate-y-0']"
-                />
-                <div
-                  v-if="worker.status === 'available'"
-                  :class="['absolute inset-0 w-4 h-4 rounded-full bg-emerald-400 animate-ping-slow -translate-x-0 -translate-y-0']"
-                />
-              </div>
-              <div class="absolute left-6 top-0 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none z-30 -translate-y-1/2">
-                <div class="bg-slate-800/95 backdrop-blur-sm border border-slate-700 rounded-lg px-3 py-2 shadow-xl">
-                  <p class="text-xs font-semibold text-white">{{ worker.name }}</p>
-                  <p class="text-[10px] text-slate-400 mt-0.5">{{ worker.specialty }}</p>
-                  <div v-if="worker.status === 'busy' && worker.eta" class="text-[10px] text-amber-400 mt-1 flex items-center gap-1">
-                    <MapPin class="w-3 h-3" />
-                    {{ worker.eta }}
+                  v-for="(step, i) in selectedOrder.progress"
+                  :key="i"
+                  class="flex gap-3"
+                >
+                  <div class="flex flex-col items-center">
+                    <div class="w-7 h-7 rounded-full bg-sky-600 flex items-center justify-center flex-shrink-0">
+                      <CheckCircle class="w-4 h-4 text-white" />
+                    </div>
+                    <div v-if="i < selectedOrder.progress.length - 1" class="w-0.5 flex-1 bg-sky-600/30 my-1" />
+                  </div>
+                  <div class="pb-3">
+                    <p class="text-sm font-medium text-slate-200">{{ step.description }}</p>
+                    <p class="text-xs text-slate-500 mt-0.5">{{ formatDate(step.timestamp) }} {{ formatTime(step.timestamp) }}</p>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div class="px-5 pb-4 space-y-2">
-            <div
-              v-for="worker in workerStore.workers"
-              :key="worker.id"
-              class="flex items-center justify-between p-2.5 rounded-lg bg-slate-800/50 hover:bg-slate-800/80 transition-colors"
+          <div class="px-5 py-4 border-t border-slate-800 flex items-center justify-end gap-2 bg-slate-900/60">
+            <button
+              v-if="selectedOrder.status === 'pending'"
+              class="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5"
+              @click="openAssign(selectedOrder); selectedOrder = null;"
             >
-              <div class="flex items-center gap-2.5 min-w-0">
-                <div
-                  :class="[
-                    'w-2 h-2 rounded-full flex-shrink-0',
-                    worker.status === 'available' ? 'bg-emerald-400' : worker.status === 'busy' ? 'bg-amber-400' : 'bg-slate-600'
-                  ]"
-                />
-                <div class="min-w-0">
-                  <p class="text-xs font-medium text-white truncate">{{ worker.name }}</p>
-                  <p class="text-[10px] text-slate-500">{{ worker.specialty }}</p>
-                </div>
-              </div>
-              <div class="flex items-center gap-2 flex-shrink-0">
-                <StatusBadge type="worker" :value="worker.status" />
-                <div v-if="worker.status === 'busy' && worker.eta" class="text-[10px] text-amber-400 flex items-center gap-0.5">
-                  <MapPin class="w-3 h-3" />
-                  {{ worker.eta }}
-                </div>
-              </div>
-            </div>
+              <UserPlus class="w-4 h-4" />
+              分配维修人员
+            </button>
+            <button
+              v-if="selectedOrder.status === 'assigned' || selectedOrder.status === 'in_progress'"
+              class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5"
+              @click="completeOrder(selectedOrder)"
+            >
+              <CheckCircle class="w-4 h-4" />
+              标记完成
+            </button>
+            <button
+              class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium rounded-lg transition-colors"
+              @click="selectedOrder = null"
+            >
+              关闭
+            </button>
           </div>
         </div>
       </div>
-    </div>
+    </Transition>
+
+    <Transition name="modal">
+      <div
+        v-if="assignOrder"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+        @click.self="assignOrder = null"
+      >
+        <div class="w-full max-w-md bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl overflow-hidden">
+          <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+            <div>
+              <h3 class="text-lg font-bold text-white">分配维修人员</h3>
+              <p class="text-xs text-slate-500 mt-0.5">{{ assignOrder.title }}</p>
+            </div>
+            <button
+              class="p-2 hover:bg-slate-800 rounded-lg transition-colors"
+              @click="assignOrder = null"
+            >
+              <X class="w-4 h-4 text-slate-400" />
+            </button>
+          </div>
+          <div class="p-5 space-y-2">
+            <button
+              v-for="worker in availableWorkers"
+              :key="worker.id"
+              class="w-full p-3 rounded-xl border transition-all flex items-center gap-3 text-left hover:scale-[1.01]"
+              :class="[
+                worker.status === 'available'
+                  ? 'border-slate-700 hover:border-sky-500 hover:bg-slate-800/60'
+                  : 'border-slate-800 bg-slate-800/30 opacity-70'
+              ]"
+              @click="assignWorker(worker.id)"
+            >
+              <div class="w-10 h-10 rounded-full bg-sky-600 flex items-center justify-center text-sm font-bold text-white flex-shrink-0">
+                {{ worker.name.charAt(0) }}
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <p class="text-sm font-semibold text-white">{{ worker.name }}</p>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded-md" :class="workerStatusColor(worker.status)">
+                    {{ workerStatusText(worker.status) }}
+                  </span>
+                </div>
+                <p class="text-xs text-slate-400 mt-0.5">{{ worker.specialty }} · {{ worker.phone }}</p>
+                <p v-if="worker.status === 'busy'" class="text-[11px] text-amber-400 mt-1 flex items-center gap-1">
+                  <AlertCircle class="w-3 h-3" />
+                  当前有工单处理中
+                </p>
+              </div>
+              <ChevronRight class="w-4 h-4 text-slate-600" />
+            </button>
+            <div v-if="availableWorkers.length === 0" class="text-center py-10 text-slate-500">
+              <Users class="w-10 h-10 mx-auto mb-3 opacity-50" />
+              <p class="text-sm">暂无维修人员信息</p>
+            </div>
+          </div>
+          <div class="px-5 py-4 border-t border-slate-800 flex justify-end bg-slate-900/60">
+            <button
+              class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium rounded-lg transition-colors"
+              @click="assignOrder = null"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
+<script setup lang="ts">
+import { ref, computed, markRaw } from 'vue'
+import { useRepairStore, type KanbanColumn } from '@/stores/repair'
+import { useWorkerStore } from '@/stores/worker'
+import { usePaymentStore } from '@/stores/payment'
+import type { RepairOrder, MaintenanceWorker } from '@/types'
+import {
+  Clock, Inbox, Search, UserPlus, X, GripVertical,
+  AlertCircle, CheckCircle, ChevronRight, Users, FilterX, Eye,
+  Loader, FolderCheck, Wrench
+} from 'lucide-vue-next'
+import StatusBadge from '@/components/common/StatusBadge.vue'
+
+const store = useRepairStore()
+const workerStore = useWorkerStore()
+const paymentStore = usePaymentStore()
+
+const draggingId = ref<string | null>(null)
+const dragOverColumn = ref<number | null>(null)
+const selectedOrder = ref<RepairOrder | null>(null)
+const assignOrder = ref<RepairOrder | null>(null)
+
+type ColumnDef = {
+  key: KanbanColumn
+  title: string
+  icon: any
+  iconColor: string
+  titleColor: string
+  badgeClass: string
+  headerBorder: string
+  border: string
+  activeBorder: string
+  activeBg: string
+  cardBorder: string
+  cardBg: string
+}
+
+const columns: ColumnDef[] = [
+  {
+    key: 'pending',
+    title: '待处理',
+    icon: markRaw(Clock),
+    iconColor: 'text-amber-400',
+    titleColor: 'text-amber-300',
+    badgeClass: 'bg-amber-500/20 text-amber-400',
+    headerBorder: 'border-amber-500/20 bg-amber-500/5',
+    border: 'border-amber-500/20',
+    activeBorder: 'border-amber-400',
+    activeBg: 'bg-amber-500/5',
+    cardBorder: 'border-amber-500/10',
+    cardBg: 'bg-slate-900/80 hover:bg-slate-800/80',
+  },
+  {
+    key: 'in_progress',
+    title: '处理中',
+    icon: markRaw(Wrench),
+    iconColor: 'text-sky-400',
+    titleColor: 'text-sky-300',
+    badgeClass: 'bg-sky-500/20 text-sky-400',
+    headerBorder: 'border-sky-500/20 bg-sky-500/5',
+    border: 'border-sky-500/20',
+    activeBorder: 'border-sky-400',
+    activeBg: 'bg-sky-500/5',
+    cardBorder: 'border-sky-500/10',
+    cardBg: 'bg-slate-900/80 hover:bg-slate-800/80',
+  },
+  {
+    key: 'completed',
+    title: '已完成',
+    icon: markRaw(FolderCheck),
+    iconColor: 'text-emerald-400',
+    titleColor: 'text-emerald-300',
+    badgeClass: 'bg-emerald-500/20 text-emerald-400',
+    headerBorder: 'border-emerald-500/20 bg-emerald-500/5',
+    border: 'border-emerald-500/20',
+    activeBorder: 'border-emerald-400',
+    activeBg: 'bg-emerald-500/5',
+    cardBorder: 'border-emerald-500/10',
+    cardBg: 'bg-slate-900/80 hover:bg-slate-800/80',
+  },
+]
+
+const availableWorkers = computed(() => workerStore.workers)
+
+function getColumnData(key: KanbanColumn): RepairOrder[] {
+  switch (key) {
+    case 'pending': return store.pendingList
+    case 'in_progress': return store.inProgressList
+    case 'completed': return store.completedList
+  }
+}
+
+function getColumnCount(key: KanbanColumn): number {
+  switch (key) {
+    case 'pending': return store.pendingCount
+    case 'in_progress': return store.inProgressCount
+    case 'completed': return store.completedCount
+  }
+}
+
+function getWorkerName(id: string | null): string {
+  if (!id) return ''
+  const w = workerStore.getWorkerById(id)
+  return w?.name || ''
+}
+
+function getWorkerStore(id: string | null): MaintenanceWorker | undefined {
+  if (!id) return undefined
+  return workerStore.getWorkerById(id)
+}
+
+function getWorkerInitial(id: string | null): string {
+  const name = getWorkerName(id)
+  return name ? name.charAt(0) : '?'
+}
+
+function getWorkerBg(id: string | null): string {
+  if (!id) return 'bg-slate-700 text-slate-400'
+  return 'bg-sky-600 text-white'
+}
+
+function getResident(id: string) {
+  return paymentStore.getResidentById(id)
+}
+
+function formatAddress(id: string): string {
+  const r = getResident(id)
+  if (!r) return '-'
+  return `${r.building}栋${r.unit}单元${r.room}`
+}
+
+function formatDate(s: string): string {
+  const d = new Date(s.replace(/-/g, '/'))
+  const today = new Date()
+  const diff = Math.floor((today.getTime() - d.getTime()) / (1000 * 60 * 60 * 24))
+  if (diff === 0) return '今天'
+  if (diff === 1) return '昨天'
+  if (diff < 7) return `${diff}天前`
+  return `${d.getMonth() + 1}/${d.getDate()}`
+}
+
+function formatTime(s: string): string {
+  const d = new Date(s.replace(/-/g, '/'))
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+function workerStatusText(status: string): string {
+  return { available: '空闲', busy: '忙碌', off_duty: '下班' }[status] || status
+}
+
+function workerStatusColor(status: string): string {
+  return {
+    available: 'bg-emerald-500/20 text-emerald-400',
+    busy: 'bg-amber-500/20 text-amber-400',
+    off_duty: 'bg-slate-500/20 text-slate-400',
+  }[status] || 'bg-slate-500/20 text-slate-400'
+}
+
+function onDragStart(e: DragEvent, id: string) {
+  draggingId.value = id
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', id)
+  }
+}
+
+function onDragEnd() {
+  draggingId.value = null
+  dragOverColumn.value = null
+}
+
+function onDragOver(e: DragEvent, idx: number) {
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+  dragOverColumn.value = idx
+}
+
+function onDragLeave(e: DragEvent, idx: number) {
+  if (dragOverColumn.value === idx) {
+    const target = e.currentTarget as HTMLElement
+    if (!target.contains(e.relatedTarget as Node)) {
+      dragOverColumn.value = null
+    }
+  }
+}
+
+function onDrop(e: DragEvent, columnKey: KanbanColumn) {
+  e.preventDefault()
+  const orderId = e.dataTransfer?.getData('text/plain') || draggingId.value
+  if (orderId) {
+    store.moveToColumn(orderId, columnKey)
+  }
+  draggingId.value = null
+  dragOverColumn.value = null
+}
+
+function openAssign(order: RepairOrder) {
+  assignOrder.value = order
+}
+
+function assignWorker(workerId: string) {
+  if (assignOrder.value) {
+    store.assignWorker(assignOrder.value.id, workerId)
+    assignOrder.value = null
+  }
+}
+
+function completeOrder(order: RepairOrder) {
+  store.updateStatus(order.id, 'completed', '工单处理完成')
+  selectedOrder.value = null
+}
+</script>
+
 <style scoped>
-@keyframes slide-in {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
 }
 
-.animate-slide-in {
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.scrollbar-thin::-webkit-scrollbar { width: 6px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+.scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+.list-enter-active, .list-leave-active {
+  transition: all 0.3s ease;
+}
+.list-enter-from {
   opacity: 0;
-  animation: slide-in 0.5s ease-out forwards;
+  transform: translateX(-20px) scale(0.9);
+}
+.list-leave-to {
+  opacity: 0;
+  transform: translateX(20px) scale(0.9);
+}
+.list-move {
+  transition: transform 0.3s ease;
 }
 
-@keyframes ping-once {
-  0% {
-    transform: scale(1);
-    opacity: 0.6;
-  }
-  100% {
-    transform: scale(2.5);
-    opacity: 0;
-  }
+.modal-enter-active, .modal-leave-active {
+  transition: opacity 0.25s ease;
 }
-
-.animate-ping-once {
-  animation: ping-once 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+.modal-enter-active > div:last-child,
+.modal-leave-active > div:last-child {
+  transition: transform 0.25s ease, opacity 0.25s ease;
 }
-
-@keyframes ping-slow {
-  0% {
-    transform: scale(1);
-    opacity: 0.7;
-  }
-  100% {
-    transform: scale(3);
-    opacity: 0;
-  }
-}
-
-.animate-ping-slow {
-  animation: ping-slow 2.5s cubic-bezier(0, 0, 0.2, 1) infinite;
-}
-
-.worker-marker {
-  will-change: left, top;
-}
-
-.line-clamp-2 {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+.modal-enter-from, .modal-leave-to { opacity: 0; }
+.modal-enter-from > div:last-child,
+.modal-leave-to > div:last-child {
+  transform: scale(0.95) translateY(10px);
+  opacity: 0;
 }
 </style>

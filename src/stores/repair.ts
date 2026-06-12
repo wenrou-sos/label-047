@@ -1,9 +1,11 @@
-import { defineStore, storeToRefs } from 'pinia'
+import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { RepairOrder, RepairFilter, RepairStatus } from '@/types'
 import { repairs as mockRepairs } from '@/mock/repairs'
 import { useLocalStorage } from '@/composables/useLocalStorage'
 import { useWorkerStore } from './worker'
+
+export type KanbanColumn = 'pending' | 'in_progress' | 'completed'
 
 export const useRepairStore = defineStore('repair', () => {
   const repairs = useLocalStorage<RepairOrder[]>('property-repairs', mockRepairs)
@@ -11,6 +13,7 @@ export const useRepairStore = defineStore('repair', () => {
     status: '',
     priority: '',
     keyword: '',
+    workerId: '',
   })
 
   const filteredRepairs = computed(() =>
@@ -18,21 +21,26 @@ export const useRepairStore = defineStore('repair', () => {
       if (filter.value.status && r.status !== filter.value.status) return false
       if (filter.value.priority && r.priority !== filter.value.priority) return false
       if (filter.value.keyword && !r.title.includes(filter.value.keyword) && !r.description.includes(filter.value.keyword)) return false
+      if (filter.value.workerId && r.assignedWorkerId !== filter.value.workerId) return false
       return true
     })
   )
 
-  const pendingCount = computed(() =>
-    repairs.value.filter(r => r.status === 'pending').length
+  const pendingList = computed(() =>
+    filteredRepairs.value.filter(r => r.status === 'pending')
   )
 
-  const inProgressCount = computed(() =>
-    repairs.value.filter(r => r.status === 'in_progress' || r.status === 'assigned').length
+  const inProgressList = computed(() =>
+    filteredRepairs.value.filter(r => r.status === 'in_progress' || r.status === 'assigned')
   )
 
-  const completedCount = computed(() =>
-    repairs.value.filter(r => r.status === 'completed' || r.status === 'closed').length
+  const completedList = computed(() =>
+    filteredRepairs.value.filter(r => r.status === 'completed' || r.status === 'closed')
   )
+
+  const pendingCount = computed(() => pendingList.value.length)
+  const inProgressCount = computed(() => inProgressList.value.length)
+  const completedCount = computed(() => completedList.value.length)
 
   const timelyRate = computed(() => {
     const completed = repairs.value.filter(r => r.status === 'completed' || r.status === 'closed')
@@ -81,6 +89,7 @@ export const useRepairStore = defineStore('repair', () => {
   function updateStatus(orderId: string, status: RepairStatus, description: string) {
     const order = repairs.value.find(r => r.id === orderId)
     if (order) {
+      const oldStatus = order.status
       order.status = status
       order.progress.push({
         stage: status,
@@ -97,6 +106,37 @@ export const useRepairStore = defineStore('repair', () => {
           worker.eta = null
         }
       }
+
+      if ((oldStatus === 'completed' || oldStatus === 'closed') && order.assignedWorkerId && status !== 'completed' && status !== 'closed') {
+        const workerStore = useWorkerStore()
+        const worker = workerStore.getWorkerById(order.assignedWorkerId)
+        if (worker) {
+          worker.status = 'busy'
+          worker.currentOrderId = orderId
+          worker.eta = '约15分钟'
+        }
+      }
+    }
+  }
+
+  function moveToColumn(orderId: string, column: KanbanColumn) {
+    const order = repairs.value.find(r => r.id === orderId)
+    if (!order) return
+
+    const statusMap: Record<KanbanColumn, { status: RepairStatus; desc: string }> = {
+      pending: { status: 'pending', desc: '工单退回待处理' },
+      in_progress: { status: 'in_progress', desc: '开始处理工单' },
+      completed: { status: 'completed', desc: '工单处理完成' },
+    }
+
+    const target = statusMap[column]
+
+    if (column === 'in_progress' && !order.assignedWorkerId) {
+      return
+    }
+
+    if (order.status !== target.status) {
+      updateStatus(orderId, target.status, target.desc)
     }
   }
 
@@ -105,13 +145,16 @@ export const useRepairStore = defineStore('repair', () => {
   }
 
   function resetFilter() {
-    filter.value = { status: '', priority: '', keyword: '' }
+    filter.value = { status: '', priority: '', keyword: '', workerId: '' }
   }
 
   return {
     repairs,
     filter,
     filteredRepairs,
+    pendingList,
+    inProgressList,
+    completedList,
     pendingCount,
     inProgressCount,
     completedCount,
@@ -119,6 +162,7 @@ export const useRepairStore = defineStore('repair', () => {
     monthlyRepairCounts,
     assignWorker,
     updateStatus,
+    moveToColumn,
     setFilter,
     resetFilter,
   }

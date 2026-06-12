@@ -83,4 +83,5 @@ export interface RepairFilter {
   status: RepairStatus | ''
   priority: RepairPriority | ''
   keyword: string
+  workerId: string
 }
