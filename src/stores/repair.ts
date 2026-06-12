@@ -119,9 +119,9 @@ export const useRepairStore = defineStore('repair', () => {
     }
   }
 
-  function moveToColumn(orderId: string, column: KanbanColumn) {
+  function moveToColumn(orderId: string, column: KanbanColumn): { success: boolean; message?: string } {
     const order = repairs.value.find(r => r.id === orderId)
-    if (!order) return
+    if (!order) return { success: false, message: '工单不存在' }
 
     const statusMap: Record<KanbanColumn, { status: RepairStatus; desc: string }> = {
       pending: { status: 'pending', desc: '工单退回待处理' },
@@ -132,12 +132,21 @@ export const useRepairStore = defineStore('repair', () => {
     const target = statusMap[column]
 
     if (column === 'in_progress' && !order.assignedWorkerId) {
-      return
+      return { success: false, message: '请先分配维修人员，再开始处理' }
+    }
+
+    if (column === 'completed' && !order.assignedWorkerId) {
+      return { success: false, message: '未分配维修人员的工单不能直接完成，请先派工' }
+    }
+
+    if (column === 'completed' && order.status !== 'in_progress' && order.status !== 'assigned') {
+      return { success: false, message: '请先将工单移至处理中，再标记完成' }
     }
 
     if (order.status !== target.status) {
       updateStatus(orderId, target.status, target.desc)
     }
+    return { success: true }
   }
 
   function setFilter(newFilter: Partial<RepairFilter>) {

@@ -1,5 +1,22 @@
 <template>
-  <div class="space-y-5 animate-fadeIn">
+  <div class="space-y-5 animate-fadeIn relative">
+    <Transition name="toast">
+      <div
+        v-if="toast.show"
+        class="fixed top-4 left-1/2 -translate-x-1/2 z-[100] px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 border max-w-sm"
+        :class="[
+          toast.type === 'error' ? 'bg-rose-500/95 border-rose-400/50 text-white' : 'bg-emerald-500/95 border-emerald-400/50 text-white'
+        ]"
+      >
+        <AlertCircle v-if="toast.type === 'error'" class="w-5 h-5 flex-shrink-0" />
+        <CheckCircle v-else class="w-5 h-5 flex-shrink-0" />
+        <span class="text-sm font-medium">{{ toast.message }}</span>
+        <button class="ml-1 p-1 hover:bg-white/20 rounded transition-colors" @click="toast.show = false">
+          <X class="w-4 h-4" />
+        </button>
+      </div>
+    </Transition>
+
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
       <div>
         <h1 class="text-2xl font-bold text-white tracking-tight">维修工单看板</h1>
@@ -56,7 +73,8 @@
           'rounded-xl border-2 transition-all duration-200 h-[calc(100vh-260px)] min-h-[500px] flex flex-col',
           dragOverColumn === idx
             ? col.activeBorder + ' ' + col.activeBg + ' scale-[1.01]'
-            : col.border + ' bg-slate-900/40'
+            : col.border + ' bg-slate-900/40',
+          shakeColumn === idx ? 'animate-shake !border-rose-500' : ''
         ]"
       >
         <div
@@ -94,6 +112,11 @@
                 <div class="flex items-center gap-1.5 min-w-0">
                   <StatusBadge :value="order.priority" type="repair-priority" />
                   <span class="text-[11px] font-mono text-slate-500 truncate">{{ order.id }}</span>
+                  <AlertCircle
+                    v-if="!order.assignedWorkerId"
+                    class="w-3.5 h-3.5 text-amber-500 flex-shrink-0"
+                    title="未分配维修人员"
+                  />
                 </div>
                 <button
                   v-if="col.key === 'pending'"
@@ -122,8 +145,11 @@
                   >
                     {{ getWorkerInitial(order.assignedWorkerId) }}
                   </div>
-                  <span class="text-[11px] text-slate-400">
-                    {{ getWorkerName(order.assignedWorkerId) || '待分配' }}
+                  <span
+                    class="text-[11px]"
+                    :class="order.assignedWorkerId ? 'text-slate-400' : 'text-amber-400 font-medium'"
+                  >
+                    {{ getWorkerName(order.assignedWorkerId) || '未分配' }}
                   </span>
                 </div>
                 <div class="flex items-center gap-1 text-[11px] text-slate-500">
@@ -322,6 +348,23 @@
         </div>
       </div>
     </Transition>
+
+    <Transition name="toast">
+      <div
+        v-if="toast.show"
+        class="fixed top-20 left-1/2 -translate-x-1/2 z-[100] px-5 py-3 rounded-xl shadow-2xl border backdrop-blur-md flex items-center gap-2.5"
+        :class="[
+          toast.type === 'error' ? 'bg-rose-950/90 border-rose-500/50 text-rose-200' :
+          toast.type === 'success' ? 'bg-emerald-950/90 border-emerald-500/50 text-emerald-200' :
+          'bg-slate-900/90 border-slate-600/50 text-slate-200'
+        ]"
+      >
+        <AlertCircle v-if="toast.type === 'error'" class="w-5 h-5 text-rose-400 flex-shrink-0" />
+        <CheckCircle v-else-if="toast.type === 'success'" class="w-5 h-5 text-emerald-400 flex-shrink-0" />
+        <AlertCircle v-else class="w-5 h-5 text-sky-400 flex-shrink-0" />
+        <span class="text-sm font-medium">{{ toast.message }}</span>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -346,6 +389,26 @@ const draggingId = ref<string | null>(null)
 const dragOverColumn = ref<number | null>(null)
 const selectedOrder = ref<RepairOrder | null>(null)
 const assignOrder = ref<RepairOrder | null>(null)
+const toast = ref<{ show: boolean; message: string; type: 'error' | 'success' | 'info' }>({
+  show: false,
+  message: '',
+  type: 'info',
+})
+const shakeColumn = ref<number | null>(null)
+
+let toastTimer: ReturnType<typeof setTimeout> | null = null
+function showToast(message: string, type: 'error' | 'success' | 'info' = 'info') {
+  toast.value = { show: true, message, type }
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => {
+    toast.value.show = false
+  }, 2500)
+}
+
+function triggerShake(idx: number) {
+  shakeColumn.value = idx
+  setTimeout(() => { shakeColumn.value = null }, 500)
+}
 
 type ColumnDef = {
   key: KanbanColumn
@@ -513,8 +576,13 @@ function onDragLeave(e: DragEvent, idx: number) {
 function onDrop(e: DragEvent, columnKey: KanbanColumn) {
   e.preventDefault()
   const orderId = e.dataTransfer?.getData('text/plain') || draggingId.value
+  const targetIdx = columns.findIndex(c => c.key === columnKey)
   if (orderId) {
-    store.moveToColumn(orderId, columnKey)
+    const result = store.moveToColumn(orderId, columnKey)
+    if (!result.success && result.message) {
+      triggerShake(targetIdx)
+      showToast(result.message, 'error')
+    }
   }
   draggingId.value = null
   dragOverColumn.value = null
@@ -532,7 +600,14 @@ function assignWorker(workerId: string) {
 }
 
 function completeOrder(order: RepairOrder) {
-  store.updateStatus(order.id, 'completed', '工单处理完成')
+  const result = store.moveToColumn(order.id, 'completed')
+  if (!result.success && result.message) {
+    showToast(result.message, 'error')
+    if (!order.assignedWorkerId) {
+      openAssign(order)
+    }
+    return
+  }
   selectedOrder.value = null
 }
 </script>
@@ -579,5 +654,28 @@ function completeOrder(order: RepairOrder) {
 .modal-leave-to > div:last-child {
   transform: scale(0.95) translateY(10px);
   opacity: 0;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-6px); }
+  80% { transform: translateX(6px); }
+}
+.animate-shake {
+  animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+.toast-enter-active, .toast-leave-active {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.toast-enter-from {
+  opacity: 0;
+  transform: translate(-50%, -20px);
+}
+.toast-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -10px);
 }
 </style>
