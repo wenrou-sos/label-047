@@ -24,6 +24,27 @@ export const usePaymentStore = defineStore('payment', () => {
 
   const getResidentById = (id: string) => residents.value.find(r => r.id === id)
 
+  const getPaymentsByResidentId = (residentId: string) =>
+    payments.value.filter(p => p.residentId === residentId).sort((a, b) => a.period.localeCompare(b.period))
+
+  const getResidentStats = (residentId: string) => {
+    const records = getPaymentsByResidentId(residentId)
+    const totalAmount = records.reduce((s, p) => s + p.amount, 0)
+    const totalPaid = records.reduce((s, p) => s + p.paidAmount, 0)
+    const totalOwed = records.reduce((s, p) => s + Math.max(0, p.amount - p.paidAmount), 0)
+    const overdueRecords = records.filter(p => (p.status === 'unpaid' || p.status === 'partial') && (p.amount - p.paidAmount) > 0)
+    return {
+      totalAmount,
+      totalPaid,
+      totalOwed,
+      paidCount: records.filter(p => p.status === 'paid').length,
+      unpaidCount: records.filter(p => p.status === 'unpaid').length,
+      partialCount: records.filter(p => p.status === 'partial').length,
+      overdueRecords,
+      records,
+    }
+  }
+
   const filteredPayments = computed(() => {
     return payments.value.filter(p => {
       const resident = getResidentById(p.residentId)
@@ -101,6 +122,8 @@ export const usePaymentStore = defineStore('payment', () => {
     buildings,
     units,
     getResidentById,
+    getPaymentsByResidentId,
+    getResidentStats,
     filteredPayments,
     overduePayments,
     totalCollected,
