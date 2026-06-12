@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { Payment, PaymentFilter, Resident } from '@/types'
+import type { Payment, PaymentFilter, PaymentMethod, Resident } from '@/types'
 import { payments as mockPayments } from '@/mock/payments'
 import { residents as mockResidents } from '@/mock/residents'
 import { useLocalStorage } from '@/composables/useLocalStorage'
@@ -86,7 +86,7 @@ export const usePaymentStore = defineStore('payment', () => {
 
   const overdueCount = computed(() => overduePayments.value.length)
 
-  function updatePaymentStatus(id: string, status: Payment['status'], paidAmount?: number) {
+  function updatePaymentStatus(id: string, status: Payment['status'], paidAmount?: number, method?: PaymentMethod) {
     const payment = payments.value.find(p => p.id === id)
     if (payment) {
       if (paidAmount !== undefined) {
@@ -98,10 +98,12 @@ export const usePaymentStore = defineStore('payment', () => {
         payment.status = 'paid'
         payment.paidAmount = payment.amount
         payment.paidDate = new Date().toISOString().split('T')[0]
+        payment.paymentMethod = method || 'wechat'
       } else {
         payment.status = status
         if (payment.paidAmount > 0) {
           payment.status = 'partial'
+          payment.paymentMethod = method || 'wechat'
         }
       }
     }

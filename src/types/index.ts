@@ -12,6 +12,8 @@ export interface Resident {
   phone: string
 }
 
+export type PaymentMethod = 'wechat' | 'alipay' | 'cash' | 'bank_transfer' | null
+
 export interface Payment {
   id: string
   residentId: string
@@ -21,6 +23,7 @@ export interface Payment {
   status: PaymentStatus
   dueDate: string
   paidDate: string | null
+  paymentMethod: PaymentMethod
 }
 
 export interface RepairProgress {

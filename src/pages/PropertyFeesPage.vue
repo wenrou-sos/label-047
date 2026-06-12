@@ -4,18 +4,27 @@ import { usePaymentStore } from '@/stores/payment'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import StatCard from '@/components/common/StatCard.vue'
 import { Search, RotateCcw, DollarSign, AlertTriangle, Users, Receipt, Eye, X, Phone, MapPin, TrendingUp, FileText } from 'lucide-vue-next'
-import type { Payment } from '@/types'
+import type { Payment, PaymentMethod } from '@/types'
 
 const store = usePaymentStore()
 
 const partialInput = ref<Record<string, string>>({})
 const activePartial = ref<string | null>(null)
 const detailResidentId = ref<string | null>(null)
+const selectedMethod = ref<Record<string, PaymentMethod>>({})
+
+const paymentMethodOptions: { value: PaymentMethod; label: string }[] = [
+  { value: 'wechat', label: '微信' },
+  { value: 'alipay', label: '支付宝' },
+  { value: 'cash', label: '现金' },
+  { value: 'bank_transfer', label: '银行转账' },
+]
 
 const formatCurrency = (value: number) => `¥${value.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}`
 
 const handleMarkPaid = (id: string) => {
-  store.updatePaymentStatus(id, 'paid')
+  store.updatePaymentStatus(id, 'paid', undefined, selectedMethod.value[id] || 'wechat')
+  selectedMethod.value[id] = undefined as any
 }
 
 const getRemainingAmount = (payment: any) => {
@@ -25,9 +34,10 @@ const getRemainingAmount = (payment: any) => {
 const handlePartialSubmit = (id: string) => {
   const amount = parseFloat(partialInput.value[id] || '')
   if (isNaN(amount) || amount <= 0) return
-  store.updatePaymentStatus(id, 'partial', amount)
+  store.updatePaymentStatus(id, 'partial', amount, selectedMethod.value[id] || 'wechat')
   activePartial.value = null
   partialInput.value[id] = ''
+  selectedMethod.value[id] = undefined as any
 }
 
 const showPartialInput = (id: string) => {
@@ -55,9 +65,14 @@ const paidPercent = computed(() => {
 })
 
 const paymentMethodLabel = (p: Payment): string => {
-  if (!p.paidDate) return '-'
-  if (p.status === 'partial') return '部分缴纳'
-  return '全额缴纳'
+  const map: Record<string, string> = {
+    wechat: '微信',
+    alipay: '支付宝',
+    cash: '现金',
+    bank_transfer: '银行转账',
+  }
+  if (!p.paymentMethod) return '-'
+  return map[p.paymentMethod] || p.paymentMethod
 }
 
 const daysOverdue = (dueDate: string): number => {
@@ -183,13 +198,20 @@ const daysOverdue = (dueDate: string): number => {
                   <Eye class="w-3.5 h-3.5" />
                   详情
                 </button>
-                <button
-                  v-if="payment.status === 'unpaid' || payment.status === 'partial'"
-                  class="px-2.5 py-1 rounded-md text-xs font-medium bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 transition-colors"
-                  @click="handleMarkPaid(payment.id)"
-                >
-                  标记缴费
-                </button>
+                <template v-if="payment.status === 'unpaid' || payment.status === 'partial'">
+                  <select
+                    v-model="selectedMethod[payment.id]"
+                    class="bg-slate-900 border border-slate-700 rounded-md px-1.5 py-1 text-xs text-slate-300 focus:outline-none focus:border-cyan-500"
+                  >
+                    <option v-for="opt in paymentMethodOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                  </select>
+                  <button
+                    class="px-2.5 py-1 rounded-md text-xs font-medium bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 transition-colors"
+                    @click="handleMarkPaid(payment.id)"
+                  >
+                    标记缴费
+                  </button>
+                </template>
                 <button
                   v-if="payment.status === 'partial' && activePartial !== payment.id"
                   class="px-2.5 py-1 rounded-md text-xs font-medium bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors"
@@ -198,6 +220,12 @@ const daysOverdue = (dueDate: string): number => {
                   部分缴费
                 </button>
                 <div v-if="activePartial === payment.id" class="flex items-center gap-1">
+                  <select
+                    v-model="selectedMethod[payment.id]"
+                    class="bg-slate-900 border border-slate-700 rounded-md px-1.5 py-1 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
+                  >
+                    <option v-for="opt in paymentMethodOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                  </select>
                   <div class="relative">
                     <input
                       v-model="partialInput[payment.id]"
